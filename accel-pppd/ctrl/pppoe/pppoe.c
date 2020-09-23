@@ -40,6 +40,8 @@
 #define min(x,y) ((x)<(y)?(x):(y))
 #endif
 
+#define MATCHED_SERVICE_NAME_ONLY 1
+
 struct pppoe_conn_t {
 	struct list_head entry;
 	struct triton_context_t ctx;
@@ -776,7 +778,14 @@ static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, cons
 	setup_header(pack, serv->hwaddr, addr, CODE_PADO, 0);
 
 	add_tag(pack, sizeof(pack), TAG_AC_NAME, (uint8_t *)conf_ac_name, strlen(conf_ac_name));
+
+#ifdef MATCHED_SERVICE_NAME_ONLY
+	if (service_name)
+		add_tag2(pack, sizeof(pack), service_name);
+	else
+#endif	
 	if (conf_service_name[0]) {
+
 		int i = 0;
 		do {
 		    add_tag(pack, sizeof(pack), TAG_SERVICE_NAME, (uint8_t *)conf_service_name[i], strlen(conf_service_name[i]));
@@ -784,8 +793,10 @@ static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, cons
 		} while(conf_service_name[i]);
 	}
 
+#ifndef MATCHED_SERVICE_NAME_ONLY
 	if (service_name)
 		add_tag2(pack, sizeof(pack), service_name);
+#endif
 
 	generate_cookie(serv, addr, cookie, host_uniq, relay_sid);
 
@@ -1008,6 +1019,9 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 					    if (ntohs(tag->tag_len) == strlen(conf_service_name[svc_index]) &&
 						memcmp(tag->tag_data, conf_service_name[svc_index], ntohs(tag->tag_len)) == 0) {
 						    service_match = 1;
+#ifdef MATCHED_SERVICE_NAME_ONLY
+							service_name_tag = tag;
+#endif
 						    break;
 					    }
 					    svc_index++;
@@ -1030,8 +1044,8 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 
 	if (conf_verbose)
 		print_packet(serv->ifname, "recv", pack);
-
-	if (!service_match && !conf_accept_any_service) {
+	
+	if  ((!service_match && serv->require_sn) || (!service_match && !conf_accept_any_service)) {
 		if (conf_verbose)
 			log_warn("pppoe: discarding PADI packet (Service-Name mismatch)\n");
 		return;
@@ -1310,7 +1324,8 @@ static void pppoe_serv_timeout(struct triton_timer_t *t)
 	pppoe_server_free(serv);
 }
 
-static int parse_server(const char *opt, int *padi_limit, struct ap_net **net)
+//added option for require-sn=0
+static int parse_server(const char *opt, int *require_sn, int *padi_limit, struct ap_net **net)
 {
 	char *ptr, *endptr;
 	char name[64];
@@ -1325,6 +1340,11 @@ static int parse_server(const char *opt, int *padi_limit, struct ap_net **net)
 			if (*endptr != 0 && *endptr != ',')
 				goto out_err;
 			opt = endptr;
+		} else if (!strncmp(opt, "require-sn=", sizeof("require-sn=") - 1)) {
+			*require_sn = strtol(ptr + 1, &endptr, 10);
+			if (*endptr != 0 && *endptr != ',')
+				goto out_err;
+			opt = endptr; 
 		} else if (!strncmp(opt, "net=", sizeof("net=") - 1)) {
 			ptr++;
 			for (endptr = ptr + 1; *endptr && *endptr != ','; endptr++);
@@ -1418,9 +1438,10 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 	struct pppoe_serv_t *serv;
 	struct ifreq ifr;
 	int padi_limit = conf_padi_limit;
+	int require_sn = 0;
 	struct ap_net *net = def_net;
 
-	if (parse_server(opt, &padi_limit, &net)) {
+	if (parse_server(opt, &require_sn, &padi_limit, &net)) {
 		if (cli)
 			cli_sendv(cli, "failed to parse '%s'\r\n", opt);
 		else
@@ -1516,6 +1537,8 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 	serv->parent_ifindex = parent_ifindex;
 	serv->vid = vid;
 	serv->net = net;
+	serv->require_sn = require_sn?1:0;
+
 	pthread_mutex_init(&serv->lock, NULL);
 
 	INIT_LIST_HEAD(&serv->conn_list);
