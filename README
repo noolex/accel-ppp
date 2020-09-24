@@ -25,7 +25,7 @@ Features
 15. Command line interface via telnet
 16. SNMP support (master or subagent via AgentX)
 17. Supported SSTP
-
+18. Require Service-Name flag for different interfaces in config by option require-sn=[1/0]
 
 Requirment
 ----------
