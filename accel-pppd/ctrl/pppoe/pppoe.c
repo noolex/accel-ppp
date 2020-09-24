@@ -1046,7 +1046,7 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	if (conf_verbose)
 		print_packet(serv->ifname, "recv", pack);
 	
-	if (serv->accept_null_sn == 1 && (service_name_tag == NULL || service_name_tag->tag_len == 0)) service_match = 1;
+	if (serv->accept_null_sn && (service_name_tag == NULL || service_name_tag->tag_len == 0)) service_match = 1;
 		
 	if  (!service_match && !conf_accept_any_service) {
 		if (conf_verbose)
@@ -1215,7 +1215,7 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 		return;
 	}
 
-	if (serv->accept_null_sn == 1 && (service_name_tag == NULL || service_name_tag->tag_len == 0)) service_match = 1;
+	if (serv->accept_null_sn && (service_name_tag == NULL || service_name_tag->tag_len == 0)) service_match = 1;
 
 	if (!service_match && !conf_accept_any_service) {
 		if (conf_verbose)
@@ -1547,6 +1547,7 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 	if (cli)
 		cli_sendv(cli, "%s accept null service-name %d\r\n", serv->ifname, serv->accept_null_sn);
 
+	log_error("ACCEPT_NULL_SN %d\n", serv->accept_null_sn);
 
 	pthread_mutex_init(&serv->lock, NULL);
 

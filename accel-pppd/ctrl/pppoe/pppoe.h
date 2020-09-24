@@ -97,7 +97,7 @@ struct pppoe_serv_t
 	int padi_limit;
 	time_t last_padi_limit_warn;
 
-	int accept_null_sn:1;
+	int accept_null_sn;
 	int stopping:1;
 	int vlan_mon:1;
 };
